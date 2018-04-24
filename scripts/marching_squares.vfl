@@ -1,0 +1,180 @@
+
+
+//channels
+float level_set = ch("isosurfacescalar");
+
+function float scalarFieldValue(float radius; float dist) {
+
+    float epsilon = log(0.01)/(pow(radius, 2));
+    return exp(epsilon * pow(dist, 2));
+}
+
+
+int nvtx = primvertexcount(0, (int)@primnum);
+int num_pts = npoints(@OpInput3);
+
+
+int bitmap = 0;
+float scalarFieldArray[];
+vector2 positionsArray[];
+
+
+//find a line based on three grid points and their scalar values of marching squares
+function void lerpvertices(int a; int b; int c; int d; float scalarFieldArray[]; vector2 positionsArray[]; float level_set_val)
+{
+
+    float f = (level_set_val - scalarFieldArray[a])/(scalarFieldArray[b] - scalarFieldArray[a]);
+    vector2 positionA = lerp(positionsArray[a], positionsArray[b], f);
+    float f2 = (level_set_val - scalarFieldArray[c])/(scalarFieldArray[d] - scalarFieldArray[c]);
+    vector2 positionB = lerp(positionsArray[c], positionsArray[d], f2);
+    vector positionAThree = set(positionA.x, 0, positionA.y);
+    vector positionBThree = set(positionB.x, 0, positionB.y);
+
+    int pnt0 = addpoint(0, positionAThree);
+    int pnt1 = addpoint(0, positionBThree);
+    int primNum = addprim(0, "polyline");
+    addvertex(0, primNum, pnt0);
+    addvertex(0, primNum, pnt1);
+    vector red = set(1, 0, 0);
+    setprimattrib(0, "Cd", primNum, red);
+}
+
+
+
+
+if(nvtx <3) //to avoid issues with added primitives
+{
+    @Cd = set(0.1, 0.3, 0.5);
+    return;
+}
+
+//used inorder to determine whether grid or not
+setprimattrib(0, "visibility", @primnum, 1);
+
+
+//Baseline iteration code on primitives found through GIST:
+//https://gist.github.com/NSDesign/983bb7df6d6a154e9a19
+//Loop over the vertercies to find their associated points
+
+
+for (int i = 0; i < nvtx; i++) {
+    //Get the linear vertex numbers for the prim(n)
+    int linearvertex = vertexindex(0, @primnum, i);
+
+    //Get the point number from the linear vertex number
+    int vertex_point = vertexpoint(0, linearvertex);
+
+    //Put point numbers into the points array
+    vector curr_point = point(0, "P", vertex_point);
+    vector2 curr_twod_point = set(curr_point.x, curr_point.z);
+
+    float scalar_val = 0;
+
+    for (int particles_iter = 0; particles_iter< num_pts; ++particles_iter)
+    {
+       vector pt = point(@OpInput3, "P", particles_iter);
+       vector2 pt_two = set(pt.x, pt.z);
+       float local_dist = distance(pt_two, curr_twod_point);
+       float scalar_field_local_val = scalarFieldValue(1, local_dist);
+       scalar_val += scalar_field_local_val;
+    }
+
+
+
+    //create a bitmap for inside or outside (inside is 0x1)
+    if(scalar_val <= level_set)
+    {
+        bitmap = shl(1, i) | (bitmap);
+
+    }
+    push(scalarFieldArray, scalar_val);
+   // if(scalar_val > 0) {
+    printf("scalar field value is %f \n", scalar_val);
+    //}
+    push(positionsArray, curr_twod_point);
+
+}
+
+
+
+
+
+
+//evaluate marching cubes
+//evaluate marching squares type from bitmap value
+if(bitmap == 15)
+{
+    //printf("outside! \n");
+
+
+}
+else if(bitmap == 0)
+{
+    //printf("inside! \n");
+}
+else if(bitmap == 1)
+{
+
+
+    lerpvertices(0, 1, 0, 3, scalarFieldArray, positionsArray, level_set);
+
+} else if (bitmap == 2)
+{
+    lerpvertices(1, 2, 1, 0, scalarFieldArray, positionsArray, level_set);
+}
+else if (bitmap == 4)
+{
+    lerpvertices(2, 1, 3, 2, scalarFieldArray, positionsArray, level_set);
+}
+else if (bitmap == 8)
+{
+    lerpvertices(3, 2, 3, 0, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 3)
+{
+    lerpvertices(0, 3, 1, 2, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 5)
+{
+    lerpvertices(1, 0, 3, 0, scalarFieldArray, positionsArray, level_set);
+    lerpvertices(2, 1, 2, 3, scalarFieldArray, positionsArray, level_set);
+} else if(bitmap == 6)
+{
+
+    lerpvertices(2, 3, 1, 0, scalarFieldArray, positionsArray, level_set);
+
+}
+
+else if(bitmap == 9)
+{
+    lerpvertices(0, 1, 2, 3, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 10)
+{
+    lerpvertices(1, 0, 3, 0, scalarFieldArray, positionsArray, level_set);
+    lerpvertices(2, 1, 2, 3, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 12)
+{
+    lerpvertices(0, 3, 2, 1, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 7)
+{
+    lerpvertices(0, 3, 2, 3, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 11)
+{
+    lerpvertices(2, 3, 2, 1, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 13)
+{
+    lerpvertices(1, 0, 2, 1, scalarFieldArray, positionsArray, level_set);
+}
+else if(bitmap == 14)
+{
+    lerpvertices(1, 0, 3, 0, scalarFieldArray, positionsArray, level_set);
+}
+else //would never reach here but just in case set it to a color marker so we know the lookup table is not working
+{
+    @Cd = set(0.5, 0.2, 0.3);
+}
